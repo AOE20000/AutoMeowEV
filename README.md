@@ -1,6 +1,6 @@
-# AutoMeowEV 自动发喵程序
+# AutoMeowEV（Enhanced Version） 自动发喵程序
 
-一个创新的Windows系统托盘应用，通过智能输入监听和悬浮窗实现文本替换和自动发送"喵"。
+AutoMeow的增强版本，通过智能输入监听和悬浮窗实现文本替换和自动发送"喵"。
 
 ## 功能特点
 
