@@ -1,2 +1,5 @@
 /build
 /dist/window_settings.json
+/dist/replacement_rules.json
+window_settings.json
+replacement_rules.json

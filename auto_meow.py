@@ -14,6 +14,8 @@ import os
 import tkinter as tk
 from tkinter import ttk
 import psutil
+import pyperclip
+import re
 
 def check_single_instance():
     """检查是否已有实例运行"""
@@ -122,6 +124,179 @@ class WindowSelector:
                 enabled = "✓ 已启用" if window_key in self.allowed_windows else "✗ 未启用"
                 self.tree.insert('', 'end', values=(process_name, title, enabled))
 
+
+class ReplacementRuleEditor:
+    def __init__(self, parent, replacement_rules, save_callback):
+        self.window = tk.Toplevel(parent)
+        self.window.title("替换规则管理")
+        self.window.geometry("700x500")
+        self.replacement_rules = replacement_rules
+        self.save_callback = save_callback
+        
+        # 启用/禁用替换功能
+        control_frame = ttk.Frame(self.window)
+        control_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.enabled_var = tk.BooleanVar(value=self.replacement_rules.get("enabled", True))
+        ttk.Checkbutton(control_frame, text="启用文本替换功能", 
+                       variable=self.enabled_var,
+                       command=self.toggle_replacement).pack(side='left')
+        
+        # 规则列表
+        list_frame = ttk.Frame(self.window)
+        list_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        ttk.Label(list_frame, text="替换规则列表（匹配到的文本将被替换）：").pack(anchor='w')
+        
+        # 创建表格
+        self.tree = ttk.Treeview(list_frame, columns=('pattern', 'replacement'), show='headings', height=10)
+        self.tree.heading('pattern', text='匹配文本')
+        self.tree.heading('replacement', text='替换为')
+        self.tree.column('pattern', width=300)
+        self.tree.column('replacement', width=300)
+        self.tree.pack(fill='both', expand=True)
+        
+        # 按钮区域
+        button_frame = ttk.Frame(self.window)
+        button_frame.pack(fill='x', padx=5, pady=5)
+        
+        ttk.Button(button_frame, text="添加规则", command=self.add_rule).pack(side='left', padx=2)
+        ttk.Button(button_frame, text="编辑规则", command=self.edit_rule).pack(side='left', padx=2)
+        ttk.Button(button_frame, text="删除规则", command=self.delete_rule).pack(side='left', padx=2)
+        ttk.Button(button_frame, text="上移", command=self.move_up).pack(side='left', padx=2)
+        ttk.Button(button_frame, text="下移", command=self.move_down).pack(side='left', padx=2)
+        
+        # 说明文本
+        info_frame = ttk.Frame(self.window)
+        info_frame.pack(fill='x', padx=5, pady=5)
+        info_text = "说明：按回车时，程序会扫描当前行文本，将所有匹配的词替换为指定内容。\n规则按顺序依次应用，每个规则会替换文本中所有匹配的位置。\n示例：\"我\" → \"喵\"，则\"我的\"会变成\"喵的\"。"
+        ttk.Label(info_frame, text=info_text, wraplength=650, justify='left').pack()
+        
+        # 加载现有规则
+        self.refresh_rules()
+        
+    def toggle_replacement(self):
+        self.replacement_rules["enabled"] = self.enabled_var.get()
+        self.save_callback()
+        
+    def refresh_rules(self):
+        self.tree.delete(*self.tree.get_children())
+        for rule in self.replacement_rules.get("rules", []):
+            self.tree.insert('', 'end', values=(rule.get("pattern", ""), rule.get("replacement", "")))
+    
+    def add_rule(self):
+        dialog = RuleDialog(self.window, "添加规则")
+        if dialog.result:
+            pattern, replacement = dialog.result
+            if pattern:
+                self.replacement_rules.setdefault("rules", []).append({
+                    "pattern": pattern,
+                    "replacement": replacement
+                })
+                self.refresh_rules()
+                self.save_callback()
+    
+    def edit_rule(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        index = self.tree.index(selection[0])
+        rule = self.replacement_rules["rules"][index]
+        
+        dialog = RuleDialog(self.window, "编辑规则", rule["pattern"], rule["replacement"])
+        if dialog.result:
+            pattern, replacement = dialog.result
+            if pattern:
+                self.replacement_rules["rules"][index] = {
+                    "pattern": pattern,
+                    "replacement": replacement
+                }
+                self.refresh_rules()
+                self.save_callback()
+    
+    def delete_rule(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        index = self.tree.index(selection[0])
+        del self.replacement_rules["rules"][index]
+        self.refresh_rules()
+        self.save_callback()
+    
+    def move_up(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        index = self.tree.index(selection[0])
+        if index > 0:
+            rules = self.replacement_rules["rules"]
+            rules[index], rules[index-1] = rules[index-1], rules[index]
+            self.refresh_rules()
+            self.save_callback()
+            # 重新选中移动后的项
+            self.tree.selection_set(self.tree.get_children()[index-1])
+    
+    def move_down(self):
+        selection = self.tree.selection()
+        if not selection:
+            return
+        
+        index = self.tree.index(selection[0])
+        rules = self.replacement_rules["rules"]
+        if index < len(rules) - 1:
+            rules[index], rules[index+1] = rules[index+1], rules[index]
+            self.refresh_rules()
+            self.save_callback()
+            # 重新选中移动后的项
+            self.tree.selection_set(self.tree.get_children()[index+1])
+
+
+class RuleDialog:
+    def __init__(self, parent, title, pattern="", replacement=""):
+        self.result = None
+        
+        dialog = tk.Toplevel(parent)
+        dialog.title(title)
+        dialog.geometry("500x200")
+        dialog.transient(parent)
+        dialog.grab_set()
+        
+        # 匹配文本
+        ttk.Label(dialog, text="匹配文本：").pack(padx=10, pady=(10, 0), anchor='w')
+        pattern_entry = ttk.Entry(dialog, width=60)
+        pattern_entry.pack(padx=10, pady=5, fill='x')
+        pattern_entry.insert(0, pattern)
+        
+        # 替换为
+        ttk.Label(dialog, text="替换为：").pack(padx=10, pady=(10, 0), anchor='w')
+        replacement_entry = ttk.Entry(dialog, width=60)
+        replacement_entry.pack(padx=10, pady=5, fill='x')
+        replacement_entry.insert(0, replacement)
+        
+        # 按钮
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=20)
+        
+        def on_ok():
+            self.result = (pattern_entry.get(), replacement_entry.get())
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        ttk.Button(button_frame, text="确定", command=on_ok).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="取消", command=on_cancel).pack(side='left', padx=5)
+        
+        # 绑定回车键
+        pattern_entry.focus()
+        dialog.bind('<Return>', lambda e: on_ok())
+        dialog.bind('<Escape>', lambda e: on_cancel())
+        
+        dialog.wait_window()
+
 class AutoMeow:
     def __init__(self):
         # 检查单实例
@@ -134,6 +309,7 @@ class AutoMeow:
         self.icon = None
         self.is_admin = self.check_admin()
         self.allowed_windows = self.load_window_settings()
+        self.replacement_rules = self.load_replacement_rules()  # 加载替换规则
         self.window_manager = None  # 添加窗口管理器引用
         self.root = None  # 添加tkinter根窗口引用
         self.setup_tray()
@@ -174,6 +350,33 @@ class AutoMeow:
         try:
             with open('window_settings.json', 'w', encoding='utf-8') as f:
                 json.dump(self.allowed_windows, f, ensure_ascii=False, indent=2)
+        except:
+            pass
+
+    def load_replacement_rules(self):
+        """加载替换规则"""
+        try:
+            if os.path.exists('replacement_rules.json'):
+                with open('replacement_rules.json', 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except:
+            pass
+        # 默认替换规则 - 示例：将常见词替换为"喵"
+        return {
+            "enabled": True,
+            "rules": [
+                {"pattern": "我", "replacement": "喵"},
+                {"pattern": "你", "replacement": "喵"},
+                {"pattern": "他", "replacement": "喵"},
+                {"pattern": "她", "replacement": "喵"},
+            ]
+        }
+
+    def save_replacement_rules(self):
+        """保存替换规则"""
+        try:
+            with open('replacement_rules.json', 'w', encoding='utf-8') as f:
+                json.dump(self.replacement_rules, f, ensure_ascii=False, indent=2)
         except:
             pass
 
@@ -243,10 +446,24 @@ class AutoMeow:
         self.window_manager.window.protocol("WM_DELETE_WINDOW", on_closing)
         self.root.mainloop()
     
+    def show_replacement_editor(self, *args):
+        """显示替换规则编辑器"""
+        root = tk.Tk()
+        root.withdraw()
+        editor = ReplacementRuleEditor(root, self.replacement_rules, self.save_replacement_rules)
+        
+        def on_closing():
+            editor.window.destroy()
+            root.quit()
+            
+        editor.window.protocol("WM_DELETE_WINDOW", on_closing)
+        root.mainloop()
+    
     def setup_tray(self):
         menu = pystray.Menu(
             pystray.MenuItem("启用/禁用", self.toggle),
             pystray.MenuItem("窗口管理", self.show_window_manager),
+            pystray.MenuItem("替换规则", self.show_replacement_editor),
             pystray.MenuItem(
                 f"权限状态: {'✓ 管理员' if self.is_admin else '✗ 普通用户'}",
                 lambda: None,
@@ -309,21 +526,107 @@ class AutoMeow:
         e.event_type = 'down'
         keyboard.block_key(e.scan_code)
         
-        # 1. 将光标移到末尾，增加延迟
-        keyboard.press('end')
-        time.sleep(0.03)  # 增加延迟以确保光标移动完成
-        keyboard.release('end')
-        time.sleep(0.02)  # 添加额外延迟
+        # 获取当前输入的文本并进行替换
+        replaced_text = self.get_and_replace_text()
         
-        # 2. 输入喵，增加延迟
-        keyboard.write("喵")
-        time.sleep(0.08)  # 增加延迟以确保文字输入完成
+        if replaced_text is not None:
+            # 如果有替换内容，清除原文本并输入新文本
+            self.clear_current_line()
+            time.sleep(0.05)
+            keyboard.write(replaced_text)
+            time.sleep(0.08)
+        else:
+            # 如果没有匹配到替换规则，使用原来的逻辑（在末尾添加"喵"）
+            keyboard.press('end')
+            time.sleep(0.03)
+            keyboard.release('end')
+            time.sleep(0.02)
+            keyboard.write("喵")
+            time.sleep(0.08)
         
-        # 3. 发送Enter
+        # 发送Enter
         keyboard.press_and_release("enter")
         
         keyboard.unblock_key(e.scan_code)
         return False
+
+    def get_and_replace_text(self):
+        """获取当前行文本并根据规则进行替换"""
+        if not self.replacement_rules.get("enabled", True):
+            return None
+            
+        try:
+            # 保存当前剪贴板内容
+            old_clipboard = pyperclip.paste()
+            
+            # 选择当前行的所有文本
+            keyboard.press('home')
+            time.sleep(0.02)
+            keyboard.release('home')
+            time.sleep(0.02)
+            keyboard.press('shift')
+            keyboard.press('end')
+            time.sleep(0.02)
+            keyboard.release('end')
+            keyboard.release('shift')
+            time.sleep(0.02)
+            
+            # 复制选中的文本
+            keyboard.press_and_release('ctrl+c')
+            time.sleep(0.05)
+            
+            # 获取复制的文本
+            current_text = pyperclip.paste()
+            
+            # 恢复剪贴板
+            pyperclip.copy(old_clipboard)
+            
+            # 如果文本为空或与剪贴板内容相同（可能复制失败），返回None
+            if not current_text or current_text == old_clipboard:
+                return None
+            
+            # 应用替换规则 - 对所有匹配项进行替换
+            replaced = False
+            result_text = current_text
+            
+            for rule in self.replacement_rules.get("rules", []):
+                pattern = rule.get("pattern", "")
+                replacement = rule.get("replacement", "")
+                
+                if not pattern:
+                    continue
+                
+                # 使用正则表达式进行全局替换（替换所有匹配项）
+                if re.search(re.escape(pattern), result_text):
+                    result_text = re.sub(re.escape(pattern), replacement, result_text, flags=0)
+                    replaced = True
+            
+            return result_text if replaced else None
+            
+        except Exception as ex:
+            # 如果出错，返回None使用默认行为
+            return None
+
+    def clear_current_line(self):
+        """清除当前行的文本"""
+        try:
+            # 选择当前行
+            keyboard.press('home')
+            time.sleep(0.02)
+            keyboard.release('home')
+            time.sleep(0.02)
+            keyboard.press('shift')
+            keyboard.press('end')
+            time.sleep(0.02)
+            keyboard.release('end')
+            keyboard.release('shift')
+            time.sleep(0.02)
+            
+            # 删除选中的文本
+            keyboard.press_and_release('backspace')
+            time.sleep(0.02)
+        except:
+            pass
 
     def run(self):
         self.icon.run()
