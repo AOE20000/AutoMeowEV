@@ -1231,14 +1231,17 @@ class AutoMeowEV:
                         continue
             
             # 无论是否应用了替换规则，都在句子分隔符前添加"喵"
-            # 支持的分隔符：。，！？；、）（
+            # 支持的分隔符：。，！？；、）（：以及换行符
             import re
             
-            # 在中文标点符号前添加"喵"（包括括号）
-            result_text = re.sub(r'([^喵])([。，！？；、）（])', r'\1喵\2', result_text)
+            # 在中文标点符号前添加"喵"（包括括号和冒号）
+            result_text = re.sub(r'([^喵])([。，！？；、）（：])', r'\1喵\2', result_text)
             
-            # 如果文本末尾没有标点符号，在末尾添加"喵"
-            if not re.search(r'[。，！？；、）（]$', result_text):
+            # 在换行符前添加"喵"（如果换行前不是标点符号或"喵"）
+            result_text = re.sub(r'([^喵。，！？；、）（：\n])(\n)', r'\1喵\2', result_text)
+            
+            # 如果文本末尾没有标点符号或换行符，在末尾添加"喵"
+            if not re.search(r'[。，！？；、）（：\n]$', result_text):
                 result_text += "喵"
             
             return result_text
