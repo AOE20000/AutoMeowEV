@@ -82,7 +82,7 @@ class DebugWindow:
         ttk.Button(button_frame, text="复制日志", command=self.copy_log).pack(side='left', padx=2)
         
         # 测试输入区域
-        test_frame = ttk.LabelFrame(self.window, text="测试输入（此窗口默认在白名单中）", padding=5)
+        test_frame = ttk.LabelFrame(self.window, text="测试输入", padding=5)
         test_frame.pack(fill='x', padx=5, pady=5)
         
         ttk.Label(test_frame, text="在此输入框中测试替换功能：").pack(anchor='w', pady=(0, 5))
@@ -94,25 +94,10 @@ class DebugWindow:
         # 关闭事件
         self.window.protocol("WM_DELETE_WINDOW", self.hide)
         
-        # 将此窗口添加到白名单
-        self.add_to_whitelist()
-        
         # 记录初始日志
         self.log("调试窗口已打开")
         self.log(f"当前启用状态: {'启用' if self.parent_app.enabled else '禁用'}")
         self.log(f"白名单窗口数量: {len(self.parent_app.allowed_windows)}")
-    
-    def add_to_whitelist(self):
-        """将调试窗口添加到白名单"""
-        try:
-            # 获取窗口信息
-            hwnd = self.window.winfo_id()
-            # 使用固定的窗口标识
-            window_key = "python.exe - AutoMeowEV 调试窗口"
-            self.parent_app.allowed_windows[window_key] = True
-            self.log(f"调试窗口已添加到白名单: {window_key}")
-        except Exception as e:
-            self.log(f"添加到白名单失败: {e}")
     
     def hide(self):
         """隐藏调试窗口"""
@@ -210,6 +195,14 @@ class WindowSelector:
             item = selection[0]
             values = self.tree.item(item, 'values')
             window_key = f"{values[0]} - {values[1]}"
+            
+            # 检查是否是调试窗口，如果是则不允许关闭
+            if "AutoMeowEV 调试窗口" in window_key or "AutoMeowEV调试窗口" in window_key:
+                # 强制启用调试窗口
+                self.allowed_windows[window_key] = True
+                self.refresh_windows()
+                return
+            
             if window_key in self.allowed_windows:
                 del self.allowed_windows[window_key]
             else:
@@ -270,7 +263,14 @@ class WindowSelector:
             for window_key, hwnd in self.window_list.items():
                 try:
                     process_name, title = window_key.split(" - ", 1)
-                    enabled = "✓ 已启用" if window_key in self.allowed_windows else "✗ 未启用"
+                    
+                    # 检查是否是调试窗口，如果是则强制启用
+                    if "AutoMeowEV 调试窗口" in window_key or "AutoMeowEV调试窗口" in window_key:
+                        self.allowed_windows[window_key] = True
+                        enabled = "✓ 已启用（锁定）"
+                    else:
+                        enabled = "✓ 已启用" if window_key in self.allowed_windows else "✗ 未启用"
+                    
                     self.tree.insert('', 'end', values=(process_name, title, enabled))
                 except:
                     pass
@@ -283,7 +283,14 @@ class WindowSelector:
         for window_key, hwnd in self.window_list.items():
             if search_text in window_key.lower():
                 process_name, title = window_key.split(" - ", 1)
-                enabled = "✓ 已启用" if window_key in self.allowed_windows else "✗ 未启用"
+                
+                # 检查是否是调试窗口，如果是则强制启用
+                if "AutoMeowEV 调试窗口" in window_key or "AutoMeowEV调试窗口" in window_key:
+                    self.allowed_windows[window_key] = True
+                    enabled = "✓ 已启用（锁定）"
+                else:
+                    enabled = "✓ 已启用" if window_key in self.allowed_windows else "✗ 未启用"
+                
                 self.tree.insert('', 'end', values=(process_name, title, enabled))
 
 
@@ -308,11 +315,13 @@ class ReplacementRuleEditor:
         
         ttk.Label(list_frame, text="替换规则列表（匹配到的文本将被替换）：").pack(anchor='w')
         
-        self.tree = ttk.Treeview(list_frame, columns=('pattern', 'replacement'), show='headings', height=10)
+        self.tree = ttk.Treeview(list_frame, columns=('pattern', 'replacement', 'type'), show='headings', height=10)
         self.tree.heading('pattern', text='匹配文本')
         self.tree.heading('replacement', text='替换为')
-        self.tree.column('pattern', width=300)
-        self.tree.column('replacement', width=300)
+        self.tree.heading('type', text='类型')
+        self.tree.column('pattern', width=250)
+        self.tree.column('replacement', width=250)
+        self.tree.column('type', width=100, anchor='center')
         self.tree.pack(fill='both', expand=True)
         
         button_frame = ttk.Frame(self.window)
@@ -326,7 +335,7 @@ class ReplacementRuleEditor:
         
         info_frame = ttk.Frame(self.window)
         info_frame.pack(fill='x', padx=5, pady=5)
-        info_text = "说明：按回车时，程序会扫描当前行文本，将所有匹配的词替换为指定内容。\n规则按顺序依次应用，每个规则会替换文本中所有匹配的位置。\n示例：\"我\" → \"喵\"，则\"我的\"会变成\"喵的\"。"
+        info_text = "说明：按回车时，程序会扫描当前行文本，将所有匹配的词替换为指定内容。\n规则按顺序依次应用，每个规则会替换文本中所有匹配的位置。\n文本示例：\"我\" → \"喵\"，则\"我的\"会变成\"喵的\"。\n正则示例：\"\\d+\" → \"数字\"，则\"123\"会变成\"数字\"。"
         ttk.Label(info_frame, text=info_text, wraplength=650, justify='left').pack()
         
         self.refresh_rules()
@@ -338,16 +347,18 @@ class ReplacementRuleEditor:
     def refresh_rules(self):
         self.tree.delete(*self.tree.get_children())
         for rule in self.replacement_rules.get("rules", []):
-            self.tree.insert('', 'end', values=(rule.get("pattern", ""), rule.get("replacement", "")))
+            rule_type = "正则" if rule.get("is_regex", False) else "文本"
+            self.tree.insert('', 'end', values=(rule.get("pattern", ""), rule.get("replacement", ""), rule_type))
     
     def add_rule(self):
         dialog = RuleDialog(self.window, "添加规则")
         if dialog.result:
-            pattern, replacement = dialog.result
+            pattern, replacement, is_regex = dialog.result
             if pattern:
                 self.replacement_rules.setdefault("rules", []).append({
                     "pattern": pattern,
-                    "replacement": replacement
+                    "replacement": replacement,
+                    "is_regex": is_regex
                 })
                 self.refresh_rules()
                 self.save_callback()
@@ -360,13 +371,17 @@ class ReplacementRuleEditor:
         index = self.tree.index(selection[0])
         rule = self.replacement_rules["rules"][index]
         
-        dialog = RuleDialog(self.window, "编辑规则", rule["pattern"], rule["replacement"])
+        dialog = RuleDialog(self.window, "编辑规则", 
+                          rule.get("pattern", ""), 
+                          rule.get("replacement", ""),
+                          rule.get("is_regex", False))
         if dialog.result:
-            pattern, replacement = dialog.result
+            pattern, replacement, is_regex = dialog.result
             if pattern:
                 self.replacement_rules["rules"][index] = {
                     "pattern": pattern,
-                    "replacement": replacement
+                    "replacement": replacement,
+                    "is_regex": is_regex
                 }
                 self.refresh_rules()
                 self.save_callback()
@@ -409,12 +424,12 @@ class ReplacementRuleEditor:
 
 
 class RuleDialog:
-    def __init__(self, parent, title, pattern="", replacement=""):
+    def __init__(self, parent, title, pattern="", replacement="", is_regex=False):
         self.result = None
         
         dialog = tk.Toplevel(parent)
         dialog.title(title)
-        dialog.geometry("500x200")
+        dialog.geometry("500x250")
         dialog.transient(parent)
         dialog.grab_set()
         
@@ -428,11 +443,20 @@ class RuleDialog:
         replacement_entry.pack(padx=10, pady=5, fill='x')
         replacement_entry.insert(0, replacement)
         
+        # 添加正则表达式选项
+        regex_var = tk.BooleanVar(value=is_regex)
+        regex_check = ttk.Checkbutton(dialog, text="使用正则表达式", variable=regex_var)
+        regex_check.pack(padx=10, pady=5, anchor='w')
+        
+        # 添加提示信息
+        hint_text = "提示：正则表达式示例 - \\d+ 匹配数字，[a-z]+ 匹配小写字母"
+        ttk.Label(dialog, text=hint_text, foreground='gray', font=('', 8)).pack(padx=10, anchor='w')
+        
         button_frame = ttk.Frame(dialog)
         button_frame.pack(pady=20)
         
         def on_ok():
-            self.result = (pattern_entry.get(), replacement_entry.get())
+            self.result = (pattern_entry.get(), replacement_entry.get(), regex_var.get())
             dialog.destroy()
         
         def on_cancel():
@@ -1179,30 +1203,48 @@ class AutoMeowEV:
             if not text or len(text.strip()) == 0:
                 return text
             
+            result_text = text
+            
             # 尝试应用替换规则
             if self.replacement_rules.get("enabled", True):
-                replaced = False
-                result_text = text
-                
+                import re
                 rules = self.replacement_rules.get("rules", [])
                 for rule in rules:
                     pattern = rule.get("pattern", "")
                     replacement = rule.get("replacement", "")
+                    is_regex = rule.get("is_regex", False)
                     
                     if not pattern:
                         continue
                     
-                    if pattern in result_text:
-                        result_text = result_text.replace(pattern, replacement)
-                        replaced = True
-                
-                if replaced:
-                    return result_text
+                    try:
+                        if is_regex:
+                            # 使用正则表达式替换
+                            result_text = re.sub(pattern, replacement, result_text)
+                        else:
+                            # 使用普通文本替换
+                            if pattern in result_text:
+                                result_text = result_text.replace(pattern, replacement)
+                    except re.error as e:
+                        # 正则表达式错误，记录日志并跳过
+                        self.debug_log(f"正则表达式错误 '{pattern}': {e}")
+                        continue
             
-            # 如果没有替换，在末尾添加"喵"
-            return text + "喵"
+            # 无论是否应用了替换规则，都在句子分隔符前添加"喵"
+            # 支持的分隔符：。，！？；、）（
+            import re
+            
+            # 在中文标点符号前添加"喵"（包括括号）
+            result_text = re.sub(r'([^喵])([。，！？；、）（])', r'\1喵\2', result_text)
+            
+            # 如果文本末尾没有标点符号，在末尾添加"喵"
+            if not re.search(r'[。，！？；、）（]$', result_text):
+                result_text += "喵"
+            
+            return result_text
         except Exception as e:
             # 出错时返回原文本
+            self.debug_log(f"处理文本错误: {e}")
             return text
 
     def run(self):
