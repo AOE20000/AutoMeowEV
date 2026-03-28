@@ -138,3 +138,7 @@ pyinstaller --clean --noconsole --onefile auto_meow_ev.py
 - Windows 操作系统
 
 > **计划支持 Linux**
+
+---
+# Keep Android Open
+- https://keepandroidopen.org
