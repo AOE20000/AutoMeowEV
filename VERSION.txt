@@ -1,0 +1,44 @@
+MeowParser Version Information
+==============================
+
+Current Version: 2.1.0
+Release Date: 2024-XX-XX
+Status: Stable
+
+Version History:
+----------------
+
+v2.1.0 (Current)
+- Rule Groups: Create and manage multiple rule groups
+- Independent enable/disable for each group
+- Improved rule management UI
+- Better organization for different scenarios
+
+v2.0.0
+- Complete rewrite using PyQt6
+- Cross-platform support (Windows/Linux/macOS)
+- Improved focus management
+- Modern UI with dark theme
+- Window manager with search and filter
+- Replacement rule editor with regex support
+- Debug window with logging
+- Single instance protection
+
+v1.0.0 (tkinter) - Deprecated
+- Initial release (Windows only)
+- Replaced by PyQt6 version
+
+Platform Support:
+-----------------
+- Windows: Full support ✅
+- Linux: 90% complete 🚧
+- macOS: Untested ⏳
+
+Dependencies:
+-------------
+PyQt6 >= 6.6.0
+keyboard >= 0.13.5
+Pillow >= 9.5.0
+pyinstaller >= 6.3.0
+psutil >= 5.9.0
+pyperclip >= 1.8.2

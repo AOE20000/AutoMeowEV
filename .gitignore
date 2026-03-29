@@ -1,5 +1,55 @@
-/build
-/dist/window_settings.json
-/dist/replacement_rules.json
-window_settings.json
-replacement_rules.json
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config backups
+*.json.bak
+*.lock
+
+# Logs
+*.log
+
+# Development docs (keep only user-facing docs)
+*_DEBUG.md
+*_FIX.md
+*_ANALYSIS.md
+*_STATUS.md
+COMMIT_MESSAGE*.txt
