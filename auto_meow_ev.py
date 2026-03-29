@@ -501,6 +501,24 @@ class FloatingInputWindow:
                 # 设置窗口背景色，便于调试
                 self.window.configure(bg='#f0f0f0')
                 
+                # 设置窗口为工具窗口，提高焦点优先级
+                try:
+                    import win32gui
+                    import win32con
+                    # 延迟设置，等待窗口创建完成
+                    def set_window_style():
+                        try:
+                            hwnd = self.window.winfo_id()
+                            # 设置为工具窗口样式，提高焦点优先级
+                            style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                            win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, 
+                                                 style | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_TOPMOST)
+                        except:
+                            pass
+                    self.window.after(100, set_window_style)
+                except:
+                    pass
+                
                 # 创建输入框
                 self.entry = tk.Entry(
                     self.window, 
@@ -515,6 +533,11 @@ class FloatingInputWindow:
                 self.entry.bind('<Return>', self.on_enter)
                 self.entry.bind('<Control-Return>', self.on_ctrl_enter)
                 self.entry.bind('<Escape>', self.on_escape)
+                
+                # 绑定焦点事件，确保输入框始终有焦点
+                def on_window_focus(event):
+                    self.entry.focus_set()
+                self.window.bind('<FocusIn>', on_window_focus)
                 
                 # 设置关闭协议
                 self.window.protocol("WM_DELETE_WINDOW", self.close)
@@ -571,9 +594,33 @@ class FloatingInputWindow:
                 self.window.geometry(f"+{final_x}+{final_y}")
                 self.window.deiconify()
                 self.window.lift()
+                
+                # 强制置顶并激活窗口
+                self.window.attributes('-topmost', True)
+                self.window.attributes('-topmost', False)  # 取消永久置顶，但保持在最前
+                self.window.attributes('-topmost', True)   # 重新设置置顶
+                
+                # 使用 Windows API 强制激活窗口
+                try:
+                    import win32gui
+                    import win32con
+                    hwnd = self.window.winfo_id()
+                    # 强制激活窗口
+                    win32gui.SetForegroundWindow(hwnd)
+                    win32gui.SetFocus(hwnd)
+                except:
+                    pass
+                
+                # 多次尝试设置焦点
                 self.window.focus_force()
                 self.entry.delete(0, tk.END)
                 self.entry.focus_set()
+                self.entry.focus_force()
+                
+                # 延迟再次设置焦点，确保焦点转移
+                self.window.after(50, lambda: self.entry.focus_force())
+                self.window.after(100, lambda: self.entry.focus_force())
+                
                 self.is_visible = True
             except Exception as e:
                 print(f"显示悬浮窗错误: {e}")
@@ -991,6 +1038,19 @@ class AutoMeowEV:
                 if self.floating_window:
                     self.debug_log(f"显示悬浮窗: 位置({x}, {y})")
                     self.floating_window.show(x + 10, y + 10, window['hwnd'])
+                    
+                # 阻止空格键事件传递到原输入框
+                try:
+                    keyboard.block_key('space')
+                    # 延迟解除阻止，给悬浮窗足够时间获取焦点
+                    def unblock_space():
+                        try:
+                            keyboard.unblock_key('space')
+                        except:
+                            pass
+                    threading.Timer(0.2, unblock_space).start()
+                except:
+                    pass
             else:
                 # 还未激活输入状态，空格作为普通字符添加到缓冲区
                 self.input_buffer += ' '
