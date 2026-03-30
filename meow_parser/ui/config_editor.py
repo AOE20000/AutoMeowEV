@@ -10,9 +10,9 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QCheckBox, QMessageBox, QComboBox, QFileDialog, QInputDialog
+    QCheckBox, QMessageBox, QComboBox, QFileDialog, QInputDialog, QMenu
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 
 class RuleEditDialog(QDialog):
@@ -151,6 +151,8 @@ class ConfigFileEditor(QWidget):
         self.tree.setHeaderLabels(['规则', '操作'])
         self.tree.setColumnWidth(0, 600)
         self.tree.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self.show_context_menu)
         layout.addWidget(self.tree)
         
         # 底部按钮
@@ -232,6 +234,7 @@ class ConfigFileEditor(QWidget):
             icon = "▶" if collapsed else "▼"
             
             group_item.setText(0, f"{icon} {group_name} ({enabled_count}/{rule_count}条规则)")
+            group_item.setText(1, "编辑 | 删除 | ↑ | ↓")
             group_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "group", "index": group_index})
             group_item.setExpanded(not collapsed)
             
@@ -241,8 +244,15 @@ class ConfigFileEditor(QWidget):
                 
                 enabled = "☑" if rule.get("enabled", True) else "☐"
                 description = rule.get("description", "")
+                pattern = rule.get("pattern", "")
+                replacement = rule.get("replacement", "")
+                
+                # 显示更详细的信息
+                if not description:
+                    description = f"{pattern} → {replacement}"
                 
                 rule_item.setText(0, f"  {enabled} {description}")
+                rule_item.setText(1, "编辑 | 删除 | ↑ | ↓")
                 rule_item.setData(0, Qt.ItemDataRole.UserRole, {
                     "type": "rule",
                     "group_index": group_index,
@@ -256,7 +266,7 @@ class ConfigFileEditor(QWidget):
             return
         
         if data["type"] == "group":
-            # 切换折叠状态
+            # 双击规则组：切换折叠状态
             group_index = data["index"]
             groups = self.config_manager.current_config.get("groups", [])
             if group_index < len(groups):
@@ -264,8 +274,72 @@ class ConfigFileEditor(QWidget):
                 self.refresh_tree()
         
         elif data["type"] == "rule":
-            # 编辑规则
-            self.edit_rule(data["group_index"], data["rule_index"])
+            # 双击规则：切换启用状态
+            group_index = data["group_index"]
+            rule_index = data["rule_index"]
+            groups = self.config_manager.current_config.get("groups", [])
+            
+            if group_index < len(groups):
+                rules = groups[group_index].get("rules", [])
+                if rule_index < len(rules):
+                    rules[rule_index]["enabled"] = not rules[rule_index].get("enabled", True)
+                    self.refresh_tree()
+                    self.save()
+    
+    def show_context_menu(self, position):
+        """显示右键菜单"""
+        item = self.tree.itemAt(position)
+        if not item:
+            return
+        
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        
+        menu = QMenu(self)
+        
+        if data["type"] == "group":
+            # 规则组菜单
+            group_index = data["index"]
+            
+            add_rule_action = menu.addAction("添加规则")
+            add_rule_action.triggered.connect(lambda: self.add_rule(group_index))
+            
+            menu.addSeparator()
+            
+            move_up_action = menu.addAction("上移规则组")
+            move_up_action.triggered.connect(lambda: self.move_group_up(group_index))
+            
+            move_down_action = menu.addAction("下移规则组")
+            move_down_action.triggered.connect(lambda: self.move_group_down(group_index))
+            
+            menu.addSeparator()
+            
+            delete_group_action = menu.addAction("删除规则组")
+            delete_group_action.triggered.connect(lambda: self.delete_group(group_index))
+        
+        elif data["type"] == "rule":
+            # 规则菜单
+            group_index = data["group_index"]
+            rule_index = data["rule_index"]
+            
+            edit_action = menu.addAction("编辑规则")
+            edit_action.triggered.connect(lambda: self.edit_rule(group_index, rule_index))
+            
+            menu.addSeparator()
+            
+            move_up_action = menu.addAction("上移")
+            move_up_action.triggered.connect(lambda: self.move_rule_up(group_index, rule_index))
+            
+            move_down_action = menu.addAction("下移")
+            move_down_action.triggered.connect(lambda: self.move_rule_down(group_index, rule_index))
+            
+            menu.addSeparator()
+            
+            delete_action = menu.addAction("删除规则")
+            delete_action.triggered.connect(lambda: self.delete_rule(group_index, rule_index))
+        
+        menu.exec(self.tree.viewport().mapToGlobal(position))
     
     def add_group(self):
         """添加规则组"""
@@ -283,6 +357,100 @@ class ConfigFileEditor(QWidget):
                 "rules": []
             })
             
+            self.refresh_tree()
+            self.save()
+    
+    def add_rule(self, group_index):
+        """添加规则到指定规则组"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= len(groups):
+            return
+        
+        dialog = RuleEditDialog(self, None)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            rule = dialog.get_result()
+            groups[group_index].setdefault("rules", []).append(rule)
+            self.refresh_tree()
+            self.save()
+    
+    def move_group_up(self, group_index):
+        """上移规则组"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index > 0 and group_index < len(groups):
+            groups[group_index], groups[group_index - 1] = groups[group_index - 1], groups[group_index]
+            self.refresh_tree()
+            self.save()
+    
+    def move_group_down(self, group_index):
+        """下移规则组"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= 0 and group_index < len(groups) - 1:
+            groups[group_index], groups[group_index + 1] = groups[group_index + 1], groups[group_index]
+            self.refresh_tree()
+            self.save()
+    
+    def delete_group(self, group_index):
+        """删除规则组"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= len(groups):
+            return
+        
+        group_name = groups[group_index].get("name", f"规则组 {group_index + 1}")
+        
+        reply = QMessageBox.question(
+            self, "确认删除",
+            f"确定要删除规则组 '{group_name}' 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            del groups[group_index]
+            self.refresh_tree()
+            self.save()
+    
+    def delete_rule(self, group_index, rule_index):
+        """删除规则"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= len(groups):
+            return
+        
+        rules = groups[group_index].get("rules", [])
+        if rule_index >= len(rules):
+            return
+        
+        reply = QMessageBox.question(
+            self, "确认删除",
+            "确定要删除这条规则吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            del rules[rule_index]
+            self.refresh_tree()
+            self.save()
+    
+    def move_rule_up(self, group_index, rule_index):
+        """上移规则"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= len(groups):
+            return
+        
+        rules = groups[group_index].get("rules", [])
+        if rule_index > 0 and rule_index < len(rules):
+            rules[rule_index], rules[rule_index - 1] = rules[rule_index - 1], rules[rule_index]
+            self.refresh_tree()
+            self.save()
+    
+    def move_rule_down(self, group_index, rule_index):
+        """下移规则"""
+        groups = self.config_manager.current_config.get("groups", [])
+        if group_index >= len(groups):
+            return
+        
+        rules = groups[group_index].get("rules", [])
+        if rule_index >= 0 and rule_index < len(rules) - 1:
+            rules[rule_index], rules[rule_index + 1] = rules[rule_index + 1], rules[rule_index]
             self.refresh_tree()
             self.save()
     

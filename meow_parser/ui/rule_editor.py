@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-旧版规则编辑器模块（用于兼容）
+旧版规则编辑器模块（已废弃）
+
+⚠️ 警告：此模块已被 config_editor.py 替代，仅保留用于向后兼容。
+新项目请使用 ConfigFileEditor。
+
+迁移指南：
+- ReplacementRuleEditor → ConfigFileEditor
+- RuleDialog → RuleEditDialog
+
+主要区别：
+- 新版使用配置文件系统，支持多配置管理
+- 新版支持更丰富的规则组功能
+- 新版提供更好的用户体验
+
+保留原因：
+- 向后兼容
+- 提供备用选择
+- 作为参考实现
 """
 
 import os
