@@ -93,7 +93,6 @@
 - [RULE_GROUPS_GUIDE.md](docs/RULE_GROUPS_GUIDE.md) - 规则指南
 - [PROJECT_LAYOUT.md](PROJECT_LAYOUT.md) - 项目结构
 - [BUILD_GUIDE.md](BUILD_GUIDE.md) - 打包说明
-- [archive](docs/archive/) - 归档的文档
 - [LICENSE](LICENSE) - 开源协议
 
 ---
